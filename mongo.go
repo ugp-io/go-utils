@@ -31,7 +31,8 @@ func MongoFields(fields []string)(map[string]int){
 func MongoParamsToQuery(coll *mgo.Collection, params Params, model interface{}) (*mgo.Query){
 
     //Formatted Query
-    queries := MongoFormatQuery(params.Query, model)
+    //queries := MongoFormatQuery(params.Query, model)
+    queries := bson.M{}
 
     //Find All
     query := coll.
