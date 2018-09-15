@@ -6,6 +6,7 @@ import(
     "github.com/araddon/dateparse"
     "gopkg.in/mgo.v2"
     "gopkg.in/mgo.v2/bson"
+    "github.com/jinzhu/gorm"
 )
 
 type UpdatePart struct {
@@ -99,9 +100,12 @@ func QueryValuesToParams(urlMap map[string][]string) (Params, error){
             operator = "$lte"
         }
 
+        intVal, intValErr := strconv.Atoi(val)
+        timeVal, timeValErr := dateparse.ParseAny(val)
 
-        timeVal, err := dateparse.ParseAny(val)
-        if err == nil {
+        if intValErr == nil {
+            valFormatted = intVal
+        } else if timeValErr == nil {
             valFormatted = timeVal
         } else if val == "true" {
             valFormatted = true
@@ -130,7 +134,7 @@ func QueryStringParametersToParams(queryStringParameters map[string]string) (Par
     var params Params
     var err error
 
-    queryMap := make(map[string]interface{})
+    //queryMap := make(map[string]interface{})
 
     //Token
     if _, ok := queryStringParameters["token"]; ok {
@@ -181,17 +185,52 @@ func QueryStringParametersToParams(queryStringParameters map[string]string) (Par
     }
 
     //Query
-    for key, value := range queryStringParameters {
+    for field, val := range queryStringParameters {
 
-		//Check for Array
-		if strings.Index(value, ",") > 0 {
-			queryArray := strings.Split(value, ",")
-			queryMap[key] = queryArray
+        var valFormatted interface{}
+        operator := "$eq"
+
+
+        if strings.Contains(field, "_greater_than") {
+            field = strings.Replace(field, "_greater_than", "", 1)
+            operator = "$gt"
+        } else if strings.Contains(field, "_greater_than_or_equal_to") {
+            field = strings.Replace(field, "_greater_than_or_equal_to", "", 1)
+            operator = "$gte"
+        } else if strings.Contains(field, "_less_than") {
+            field = strings.Replace(field, "_less_than", "", 1)
+            operator = "$lt"
+        } else if strings.Contains(field, "_less_than_or_equal_to") {
+            field = strings.Replace(field, "_less_than_or_equal_to", "", 1)
+            operator = "$lte"
+        }
+
+
+        intVal, intValErr := strconv.Atoi(val)
+        timeVal, timeValErr := dateparse.ParseAny(val)
+
+        if intValErr == nil {
+            valFormatted = intVal
+        } else if timeValErr == nil {
+            valFormatted = timeVal
+        } else if val == "true" {
+            valFormatted = true
+        } else if val == "false" {
+            valFormatted = false
+        } else if strings.Index(val, ",") > 0 {
+			valFormatted = strings.Split(val, ",")
+            operator = "$in"
 		} else {
-			queryMap[key] = value
+			valFormatted = val
 		}
+
+        params.Query = append(params.Query, QueryPart{
+            Field : field,
+            Operator : operator,
+            Value : valFormatted,
+        })
+
     }
-    //params.Query = queryMap
 
     return params, err
 }
@@ -211,6 +250,101 @@ func ParseUpdateMongo(updates []UpdatePart)(mgo.Change){
     return change
 }
 
+func ParseParamsGorm(db *gorm.DB, params Params)(*gorm.DB){
+
+    //Query
+    var queryFields []string
+    var queryVals []interface{}
+    for _, queryPart := range params.Query {
+
+        //$eq
+        if queryPart.Operator == "$eq" {
+            queryFields = append(queryFields, queryPart.Field + " = ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$ne
+        if queryPart.Operator == "$ne" {
+            queryFields = append(queryFields, queryPart.Field + " <> ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$in
+        if queryPart.Operator == "$in" {
+            queryFields = append(queryFields, queryPart.Field + " IN(?)")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$lt
+        if queryPart.Operator == "$lt" {
+            queryFields = append(queryFields, queryPart.Field + " < ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$lte
+        if queryPart.Operator == "$lte" {
+            queryFields = append(queryFields, queryPart.Field + " <= ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$gt
+        if queryPart.Operator == "$gt" {
+            queryFields = append(queryFields, queryPart.Field + " > ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$gte
+        if queryPart.Operator == "$gte" {
+            queryFields = append(queryFields, queryPart.Field + " >= ?")
+            queryVals = append(queryVals, queryPart.Value)
+        }
+
+        //$regex
+        if queryPart.Operator == "$regex" {
+            queryFields = append(queryFields, queryPart.Field + " LIKE ?")
+            queryVals = append(queryVals, "%" + queryPart.Value.(string) + "%")
+        }
+    }
+
+    //Build
+    if len(queryFields) > 0 && len(queryVals) > 0 && len(queryFields) == len(queryVals){
+        db = db.Where(strings.Join(queryFields, " AND "), queryVals...)
+    }
+
+    //Fields
+    if len(params.Fields) > 0 {
+        db = db.Select(params.Fields)
+    }
+
+    //Sort
+    if params.Sort != "" {
+        if strings.Contains(params.Sort, "-"){
+            db = db.Order(strings.Replace(params.Sort, "-", "", 1) + " DESC")
+        } else {
+            db = db.Order(params.Sort + " ASC")
+        }
+    }
+
+    //Limit
+    if params.Limit != 0 {
+        db = db.Limit(params.Limit)
+    }
+
+    //Skip
+    if params.Skip != 0 {
+        db = db.Offset(params.Skip)
+    } else {
+
+        //Page
+        if params.Page != 0 && params.Limit != 0 {
+            db = db.Offset(params.Limit * (params.Page - 1))
+        }
+
+    }
+
+    return db
+}
+
 func ParseParamsMongo(coll *mgo.Collection, params Params)(*mgo.Query){
 
     //BSON Query
@@ -222,7 +356,7 @@ func ParseParamsMongo(coll *mgo.Collection, params Params)(*mgo.Query){
         }
     }
 
-    //Find All
+    //Query
     query := coll.
     Find(q)
 
