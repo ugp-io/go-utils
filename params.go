@@ -10,6 +10,10 @@ import(
 )
 
 type UpdatePart struct {
+    Query []QueryPart
+    PullQuery []QueryPart
+    Operator string
+    Label string
     Field string
     PreviousValue interface{}
     NewValue interface{}
@@ -237,13 +241,53 @@ func QueryStringParametersToParams(queryStringParameters map[string]string) (Par
 
 func ParseUpdateMongo(updates []UpdatePart)(mgo.Change){
 
+    //Vars
+    update := make(map[string]interface{})
     set := make(map[string]interface{})
-
+    push := make(map[string]interface{})
+    pull := make(map[string]interface{})
     for _, update := range updates {
-        set[update.Field] = update.NewValue
+
+        //Set
+        if update.Operator == "$set" || update.Operator == "" {
+            set[update.Field] = update.NewValue
+        }
+
+        //Push
+        if update.Operator == "$push"{
+            push[update.Field] = update.NewValue
+        }
+
+        //Pull
+        if update.Operator == "$pull"{
+
+            //BSON Query
+            if len(update.PullQuery) > 0 {
+                q := make(map[string]interface{})
+                for _, queryPart := range update.PullQuery {
+                    q[queryPart.Field] = bson.M{
+                        queryPart.Operator : queryPart.Value,
+                    }
+                }
+                pull[update.Field] = q
+            }
+
+        }
+
+    }
+
+    //Update
+    if len(set) > 0 {
+        update["$set"] = set
+    }
+    if len(push) > 0 {
+        update["$push"] = push
+    }
+    if len(pull) > 0 {
+        update["$pull"] = pull
     }
     change := mgo.Change{
-        Update: map[string]interface{}{"$set" : set},
+        Update: update,
         ReturnNew: true,
     }
 
