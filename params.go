@@ -1,6 +1,7 @@
 package utils
 
 import(
+    // "fmt"
     "strconv"
     "strings"
     "github.com/araddon/dateparse"
@@ -299,7 +300,15 @@ func ParseParamsGorm(db *gorm.DB, params Params)(*gorm.DB){
     //Query
     var queryFields []string
     var queryVals []interface{}
+    var orQuery []QueryPart
+    var orQueryFields []string
+    var orQueryVals []interface{}
     for _, queryPart := range params.Query {
+
+        // $or
+        if queryPart.Operator == "$or" {
+            orQuery = queryPart.Value.([]QueryPart)
+        }
 
         //$eq
         if queryPart.Operator == "$eq" {
@@ -350,9 +359,65 @@ func ParseParamsGorm(db *gorm.DB, params Params)(*gorm.DB){
         }
     }
 
-    //Build
+    for _, orQueryPart := range orQuery {
+
+        //$eq
+        if orQueryPart.Operator == "$eq" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " = ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$ne
+        if orQueryPart.Operator == "$ne" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " <> ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$in
+        if orQueryPart.Operator == "$in" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " IN(?)")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$lt
+        if orQueryPart.Operator == "$lt" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " < ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$lte
+        if orQueryPart.Operator == "$lte" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " <= ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$gt
+        if orQueryPart.Operator == "$gt" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " > ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$gte
+        if orQueryPart.Operator == "$gte" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " >= ?")
+            orQueryVals = append(orQueryVals, orQueryPart.Value)
+        }
+
+        //$regex
+        if orQueryPart.Operator == "$regex" {
+            orQueryFields = append(orQueryFields, orQueryPart.Field + " LIKE ?")
+            orQueryVals = append(orQueryVals, "%" + orQueryPart.Value.(string) + "%")
+        }
+    }
+
+    // Build
     if len(queryFields) > 0 && len(queryVals) > 0 && len(queryFields) == len(queryVals){
         db = db.Where(strings.Join(queryFields, " AND "), queryVals...)
+    }
+
+    // OR
+    if len(orQueryFields) > 0 && len(orQueryVals) > 0 && len(orQueryFields) == len(orQueryVals){
+        db = db.Where(strings.Join(orQueryFields, " OR "), orQueryVals...)
     }
 
     //Fields
