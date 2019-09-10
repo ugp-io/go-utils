@@ -458,12 +458,55 @@ func ParseParamsMongo(coll *mgo.Collection, params Params)(*mgo.Query){
 
     //BSON Query
     q := make(map[string]interface{})
-
+    var orQuery []QueryPart
+    var andQs []map[string]interface{}
+    var orQs []map[string]interface{}
     for _, queryPart := range params.Query {
-        q[queryPart.Field] = bson.M{
-            queryPart.Operator : queryPart.Value,
+
+        // $or
+        if queryPart.Operator == "$or" {
+            orQuery = queryPart.Value.([]QueryPart)
+        } else {
+            andQs = append(andQs, map[string]interface{}{
+                queryPart.Field : bson.M{
+                    queryPart.Operator : queryPart.Value,
+                },
+            })
+            // q[queryPart.Field] = bson.M{
+            //     queryPart.Operator : queryPart.Value,
+            // }
         }
+
     }
+
+    // $or
+    if len(orQuery) > 0 {
+        for _, orQueryPart := range orQuery {
+
+            if orQueryPart.Operator == "$regex" {
+                orQs = append(orQs, map[string]interface{}{
+                    orQueryPart.Field : bson.M{
+                        orQueryPart.Operator : bson.RegEx{
+                            Pattern: orQueryPart.Value.(string),
+                            Options: "i",
+                        },
+                    },
+                })
+            } else {
+                orQs = append(orQs, map[string]interface{}{
+                    orQueryPart.Field : bson.M{
+                        orQueryPart.Operator : orQueryPart.Value,
+                    },
+                })
+            }
+
+        }
+        andQs = append(andQs, map[string]interface{}{
+            "$or" : orQs,
+        })
+    }
+    q["$and"] = andQs
+
 
     //Query
     query := coll.
