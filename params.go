@@ -33,6 +33,7 @@ type Params struct {
     Page int
     Limit int
     Skip int
+    FromCache bool
 }
 
 func QueryValuesToParams(urlMap map[string][]string) (Params, error){
