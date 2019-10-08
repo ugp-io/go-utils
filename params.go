@@ -506,7 +506,10 @@ func ParseParamsMongo(coll *mgo.Collection, params Params)(*mgo.Query){
             "$or" : orQs,
         })
     }
-    q["$and"] = andQs
+    if len(andQs) > 0 {
+        q["$and"] = andQs
+    }
+
 
 
     //Query
