@@ -43,3 +43,17 @@ func GenerateRandomString(n int) (string, error) {
     }
     return base64.URLEncoding.EncodeToString(b), err
 }
+
+func Chunk(buf []string, lim int) [][]string {
+    
+	var chunk []string
+	chunks := make([][]string, 0, len(buf)/lim+1)
+	for len(buf) >= lim {
+		chunk, buf = buf[:lim], buf[lim:]
+		chunks = append(chunks, chunk)
+	}
+	if len(buf) > 0 {
+		chunks = append(chunks, buf[:len(buf)])
+	}
+	return chunks
+}
