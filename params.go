@@ -718,7 +718,12 @@ func ParseParamsMongoVer2(params Params) (*primitive.M, *options.FindOptions) {
 
 	// Set sort order
 	if params.Sort != "" {
-		findOptions.SetSort(bson.M{params.Sort: 1})
+		dir := 1
+		if strings.HasPrefix(params.Sort, "-") {
+			dir = -1
+			params.Sort = strings.TrimPrefix(params.Sort, "-")
+		}
+		findOptions.SetSort(bson.M{params.Sort: dir})
 	}
 
 	// Set limit and skip options
