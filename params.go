@@ -2,6 +2,7 @@ package utils
 
 import (
 	// "fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -633,7 +634,8 @@ func ParseParamsMongoVer2(params Params) (*primitive.M, *options.FindOptions) {
 	for _, queryPart := range params.Query {
 
 		// $or
-		if queryPart.Operator == "$or" {
+		switch queryPart.Operator {
+		case "$or":
 			orQuery := queryPart.Value.([]QueryPart)
 			orQs := []primitive.M{}
 			for _, orQueryPart := range orQuery {
@@ -659,7 +661,17 @@ func ParseParamsMongoVer2(params Params) (*primitive.M, *options.FindOptions) {
 			andQs = append(andQs, primitive.M{
 				"$or": orQs,
 			})
-		} else {
+		case "$in":
+			// Check if input is a slice or array
+			value := reflect.ValueOf(queryPart.Value)
+			if (value.Kind() == reflect.Slice || value.Kind() == reflect.Array) && value.Len() > 0 {
+				andQs = append(andQs, primitive.M{
+					queryPart.Field: bson.M{
+						queryPart.Operator: queryPart.Value,
+					},
+				})
+			}
+		default:
 			andQs = append(andQs, primitive.M{
 				queryPart.Field: bson.M{
 					queryPart.Operator: queryPart.Value,
